@@ -51,12 +51,10 @@ AttributeInfo = Struct('AttributeInfo',
     MetaField('info', lambda ctx: ctx.attribute_length))
 
 CodeAttribute = Struct('CodeAttribute',
-    UBInt16('attribute_name_index'),
-    UBInt32('attribute_length'),
     UBInt16('max_stack'),
     UBInt16('max_locals'),
     UBInt32('code_length'),
-    MetaArray(lambda ctx: ctx.code_length, UBInt8('code')),
+    MetaField('code', lambda ctx: ctx.code_length),
     UBInt16('exception_table_length'),
     MetaArray(lambda ctx: ctx.exception_table_length, Struct(
         'exception_table',
@@ -68,8 +66,6 @@ CodeAttribute = Struct('CodeAttribute',
     MetaArray(lambda ctx: ctx.attributes_count, AttributeInfo))
 
 SourceFileAttribute = Struct('SourceFileAttribute',
-    UBInt16('attribute_name_index'),
-    UBInt32('attribute_length'),
     UBInt16('sourcefile_index'))
 
 FieldInfo = Struct('FieldInfo',
@@ -109,47 +105,53 @@ class ClassFile:
         # parse the main structures in the file
         self.root = _ClassFile.parse(data)
 
-        cp = self.root.ConstantPoolInfo
+        # resolves an entry from the Constant Pool
+        def resolve_cp(obj, key, typ):
+            idx = getattr(obj, key + '_index')
+            val = self.root.ConstantPoolInfo[idx-1]
+            assert val.tag[9:] == typ
+            setattr(obj, key, val)
 
         # resolve ClassFile.this_class
-        self.root.this_class = cp[self.root.this_class_index-1]
+        resolve_cp(self.root, 'this_class', 'Class')
 
         # resolve ClassFile.super_class
         if self.root.super_class_index:
-            self.root.super_class = cp[self.root.super_class_index-1]
-
-        # dictionary in order to resolve ClassFile.ConstantPoolInfo entries
-        constant_pool_tags = {
-            'Class': {'name_index': 'Utf8'},
-            'Fieldref': {'class_index': 'Class',
-                'name_and_type_index': 'NameAndType'},
-            'Methodref': {'class_index': 'Class',
-                'name_and_type_index': 'NameAndType'},
-            'InterfaceMethodref': {'class_index': 'Class',
-                'name_and_type_index': 'NameAndType'},
-            'String': {'string_index': 'Utf8'},
-            'NameAndType': {'name_index': 'Utf8', 'descriptor_index': 'Utf8'},
-        }
+            resolve_cp(self.root, 'super_class', 'Class')
 
         # resolve ClassFile.ConstantPoolInfo
         for x in self.root.ConstantPoolInfo:
-            for key, tag in constant_pool_tags.get(x.tag[9:], {}).items():
-                entry = cp[getattr(x, key)-1]
-                assert entry.tag[9:] == tag
-                setattr(x, key[:-6], entry)
+            if x.tag[9:] == 'Class':
+                resolve_cp(x, 'name', 'Utf8')
+            elif x.tag[9:] in ('Fieldref', 'Methodref', 'InterfaceMethodref'):
+                resolve_cp(x, 'class', 'Class')
+                resolve_cp(x, 'name_and_type', 'NameAndType')
+            elif x.tag[9:] == 'String':
+                resolve_cp(x, 'string', 'Utf8')
+            elif x.tag[9:] == 'NameAndType':
+                resolve_cp(x, 'name', 'Utf8')
+                resolve_cp(x, 'descriptor', 'Utf8')
 
         # resolve ClassFile.MethodInfo
         for x in self.root.MethodInfo:
-            x.name = cp[x.name_index-1]
-            x.descriptor = cp[x.descriptor_index-1]
+            resolve_cp(x, 'name', 'Utf8')
+            resolve_cp(x, 'descriptor', 'Utf8')
 
             # resolve ClassFile.MethodInfo.AttributeInfo
             for y in x.AttributeInfo:
-                y.attribute_name = cp[y.attribute_name_index-1]
+                resolve_cp(y, 'attribute_name', 'Utf8')
+
+                # bit hardcoded, but oke
+                if y.attribute_name.value == 'Code':
+                    y.attribute = CodeAttribute.parse(y.info)
+
+                    # resolve CodeAttribute.AttributeInfo
+                    for z in y.attribute.AttributeInfo:
+                        resolve_cp(z, 'attribute_name', 'Utf8')
 
         # resolve ClassFile.AttributeInfo
         for x in self.root.AttributeInfo:
-            x.attribute_name = cp[x.attribute_name_index-1]
+            resolve_cp(x, 'attribute_name', 'Utf8')
 
     def __str__(self):
         return self.root.__str__()
