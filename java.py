@@ -2,7 +2,7 @@ from construct import *
 import pyasm2.java as java
 
 _constant_pool_stringify = {
-    'Class': lambda x: 'Class: %s' % x.name.value,
+    'Class': lambda x: '%s' % x.name.value,
     'Fieldref': lambda x: '%s.%s %s' % (x.class_.name.value,
         x.name_and_type.name.value, x.name_and_type.descriptor.value),
     'Methodref': lambda x: '%s.%s %s' % (x.class_.name.value,
