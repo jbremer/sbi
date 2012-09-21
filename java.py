@@ -101,12 +101,24 @@ MethodInfo = Struct('MethodInfo',
     UBInt16('attributes_count'),
     MetaArray(lambda ctx: ctx.attributes_count, AttributeInfo))
 
+def _constant_pool_count(obj, ctx):
+    if not hasattr(ctx, '_constant_pool_count'):
+        ctx._constant_pool_count = ctx.constant_pool_count-1
+
+    ctx._constant_pool_count -= 1
+
+    # Long and Double types take two spots..
+    if obj.tag[9:] in ('Long', 'Double'):
+        ctx._constant_pool_count -= 1
+
+    return not ctx._constant_pool_count
+
 _ClassFile = Struct('ClassFile',
     Magic('\xca\xfe\xba\xbe'),
     UBInt16('minor_version'),
     UBInt16('major_version'),
     UBInt16('constant_pool_count'),
-    MetaArray(lambda ctx: ctx.constant_pool_count-1, ConstantPoolInfo),
+    RepeatUntil(_constant_pool_count, ConstantPoolInfo),
     UBInt16('access_flags'),
     UBInt16('this_class_index'),
     UBInt16('super_class_index'),
@@ -124,6 +136,17 @@ class ClassFile:
         """Parses a Java ClassFile"""
         # parse the main structures in the file
         self.root = _ClassFile.parse(data)
+
+        # fix the constant pool, each entry that has the type Long or Double
+        # needs to be appended with another element (we'll just set it to
+        # None), because the specification is that these types take two
+        # entries
+        for idx, x in enumerate(self.root.ConstantPoolInfo):
+            if x.tag[9:] in ('Long', 'Double'):
+                # CONSTANT_None is a non-existant type.. made up to fix this
+                # weird feature of the specification
+                self.root.ConstantPoolInfo.insert(idx+1,
+                    Container(tag='CONSTANT_None'))
 
         # resolves an entry from the Constant Pool
         def resolve_cp(obj, key, typ):
