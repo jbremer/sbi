@@ -1,4 +1,23 @@
 from construct import *
+import pyasm2.java as java
+
+_constant_pool_stringify = {
+    'Class': lambda x: 'Class: %s' % x.name.value,
+    'Fieldref': lambda x: '%s.%s %s' % (x.class_.name.value,
+        x.name_and_type.name.value, x.name_and_type.descriptor.value),
+    'Methodref': lambda x: '%s.%s %s' % (x.class_.name.value,
+        x.name_and_type.name.value, x.name_and_type.descriptor.value),
+    'InterfaceMethodref': lambda x: '%s.%s %s' % (x.class_.name.value,
+        x.name_and_type.name.value, x.name_and_type.descriptor.value),
+    'String': lambda x: '"%s"' % x.string.value,
+    'Integer': lambda x: str(x.value),
+    'Float': lambda x: str(x.value),
+    'Long': lambda x: str(x.value),
+    'Double': lambda x: str(x.value),
+}
+
+def _constant_pool_str(x):
+    return _constant_pool_stringify[x.tag[9:]](x)
 
 ConstantPoolInfo = Struct('ConstantPoolInfo',
     Enum(UBInt8('tag'),
@@ -18,14 +37,14 @@ ConstantPoolInfo = Struct('ConstantPoolInfo',
         'CONSTANT_Class': Struct('CONSTANT_Class_info',
             UBInt16('name_index')),
         'CONSTANT_Fieldref': Struct('CONSTANT_Fieldref_info',
-            UBInt16('class_index'),
+            UBInt16('class__index'),
             UBInt16('name_and_type_index')),
         'CONSTANT_Methodref': Struct('CONSTANT_Methodref_info',
-            UBInt16('class_index'),
+            UBInt16('class__index'),
             UBInt16('name_and_type_index')),
         'CONSTANT_InterfaceMethodref': Struct(
             'CONSTANT_InterfaceMethodref_info',
-            UBInt16('class_index'),
+            UBInt16('class__index'),
             UBInt16('name_and_type_index')),
         'CONSTANT_String': Struct('CONSTANT_String_info',
             UBInt16('string_index')),
@@ -102,6 +121,7 @@ _ClassFile = Struct('ClassFile',
 
 class ClassFile:
     def __init__(self, data):
+        """Parses a Java ClassFile"""
         # parse the main structures in the file
         self.root = _ClassFile.parse(data)
 
@@ -124,7 +144,7 @@ class ClassFile:
             if x.tag[9:] == 'Class':
                 resolve_cp(x, 'name', 'Utf8')
             elif x.tag[9:] in ('Fieldref', 'Methodref', 'InterfaceMethodref'):
-                resolve_cp(x, 'class', 'Class')
+                resolve_cp(x, 'class_', 'Class')
                 resolve_cp(x, 'name_and_type', 'NameAndType')
             elif x.tag[9:] == 'String':
                 resolve_cp(x, 'string', 'Utf8')
@@ -149,6 +169,16 @@ class ClassFile:
                     for z in y.attribute.AttributeInfo:
                         resolve_cp(z, 'attribute_name', 'Utf8')
 
+                    # disassemble the entire function
+                    y.instructions = [] ; offset = 0
+                    while offset < len(y.attribute.code):
+                        ins = java.disassemble(y.attribute.code, offset)
+                        if ins.cp:
+                            ins.cp = self.root.ConstantPoolInfo[ins.cp-1]
+                            ins.rep += ' ; ' + _constant_pool_str(ins.cp)
+                        offset += ins.length
+                        y.instructions.append(ins)
+
         # resolve ClassFile.AttributeInfo
         for x in self.root.AttributeInfo:
             resolve_cp(x, 'attribute_name', 'Utf8')
@@ -159,4 +189,12 @@ class ClassFile:
 if __name__ == '__main__':
     import sys, jsbeautifier
     a = ClassFile(file(sys.argv[1], 'rb').read())
-    print jsbeautifier.beautify(a.__str__())
+    #print jsbeautifier.beautify(a.__str__())
+    for x in a.root.MethodInfo:
+        print 'function: %s, descriptor: %s' % (x.name.value,
+            x.descriptor.value)
+        for y in x.AttributeInfo:
+            if y.attribute_name.value == 'Code':
+                for z in y.instructions:
+                    print str(z)
+        print
