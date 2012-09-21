@@ -1,5 +1,5 @@
 from construct import *
-import pyasm2.java as java
+from pyasm2 import java
 
 _constant_pool_stringify = {
     'Class': lambda x: '%s' % x.name.value,
