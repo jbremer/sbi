@@ -1,6 +1,12 @@
 from construct import *
 from pyasm2 import java
 
+def _cstringify(s, maxlen):
+    s = s[:min(len(s), maxlen)]
+    s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+    return ''.join(ch if ord(ch) >= 0x20 and ord(ch) < 0x7f else '\\x%02x' %
+        ord(ch) for ch in s)
+
 _constant_pool_stringify = {
     'Class': lambda x: '%s' % x.name.value,
     'Fieldref': lambda x: '%s.%s %s' % (x.class_.name.value,
@@ -9,7 +15,7 @@ _constant_pool_stringify = {
         x.name_and_type.name.value, x.name_and_type.descriptor.value),
     'InterfaceMethodref': lambda x: '%s.%s %s' % (x.class_.name.value,
         x.name_and_type.name.value, x.name_and_type.descriptor.value),
-    'String': lambda x: '"%s"' % x.string.value,
+    'String': lambda x: '"%s"' % _cstringify(x.string.value, 32),
     'Integer': lambda x: str(x.value),
     'Float': lambda x: str(x.value),
     'Long': lambda x: str(x.value),
