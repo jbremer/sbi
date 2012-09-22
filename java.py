@@ -66,8 +66,7 @@ ConstantPoolInfo = Struct('ConstantPoolInfo',
             UBInt16('name_index'),
             UBInt16('descriptor_index')),
         'CONSTANT_Utf8': Struct('CONSTANT_Utf8_info',
-            PascalString('value', length_field=UBInt16('length'),
-                encoding='utf8')),
+            PascalString('value', length_field=UBInt16('length'))),
     })))
 
 AttributeInfo = Struct('AttributeInfo',
@@ -153,6 +152,13 @@ class ClassFile:
                 # weird feature of the specification
                 self.root.ConstantPoolInfo.insert(idx+1,
                     Container(tag='CONSTANT_None'))
+
+            # we have to manually decode the strings in the Constant Pool
+            # because Java encodes "\x00" as "\xc0\x80" in order to prevent
+            # null-bytes in the strings, but this is an illegal encoding
+            # according to the utf8 standards
+            if x.tag[9:] == 'Utf8':
+                x.value = x.value.replace('\xc0\x80', '\x00').decode('utf8')
 
         # resolves an entry from the Constant Pool
         def resolve_cp(obj, key, typ):
