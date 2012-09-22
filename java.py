@@ -4,7 +4,7 @@ from pyasm2 import java
 def _cstringify(s, maxlen):
     s = s[:min(len(s), maxlen)]
     s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
-    return ''.join(ch if ord(ch) >= 0x20 and ord(ch) < 0x7f else '\\x%02x' %
+    return ''.join(ch if ord(ch) >= 0x20 and ord(ch) < 0x7f else '\\u%04x' %
         ord(ch) for ch in s)
 
 _constant_pool_stringify = {
