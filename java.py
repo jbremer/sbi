@@ -1,5 +1,6 @@
 from construct import *
 from pyasm2 import java
+import copy
 
 def _cstringify(s, maxlen):
     s = s[:min(len(s), maxlen)]
@@ -206,7 +207,7 @@ class ClassFile:
 
                     # disassemble the entire function
                     y.instructions = [] ; offset = 0
-                    while offset < len(y.attribute.code):
+                    while offset < y.attribute.code_length:
                         ins = java.disassemble(y.attribute.code, offset)
                         if ins.cp:
                             ins.cp = self.root.ConstantPoolInfo[ins.cp-1]
@@ -217,6 +218,36 @@ class ClassFile:
         # resolve ClassFile.AttributeInfo
         for x in self.root.AttributeInfo:
             resolve_cp(x, 'attribute_name', 'Utf8')
+
+    def build0(self):
+        """Rebuild the ClassFile.
+
+        This function assumes only the instructions of methods are altered.
+        (Does not support a modified exception table by default.)
+        """
+        # duplicate the object, so we can alter it without destroying the
+        # original
+        root = copy.deepcopy(self.root)
+
+        for idx, x in enumerate(root.ConstantPoolInfo):
+            # restore utf8 strings
+            if x.tag[9:] == 'Utf8':
+                x.value = x.value.encode('utf8').replace('\x00', '\xc0\x80')
+            # delete None constants
+            if x.tag[9:] == 'None':
+                del root.ConstantPoolInfo[idx]
+
+        # rebuild all methods
+        for x in root.MethodInfo:
+            for y in x.AttributeInfo:
+                if y.attribute_name.value == 'Code':
+                    y.attribute.code = ''.join(z.code for z in y.instructions)
+                    y.attribute.code_length = len(y.attribute.code)
+                    y.info = CodeAttribute.build(y.attribute)
+                    y.attribute_length = len(y.info)
+
+        # build the new ClassFile
+        return _ClassFile.build(root)
 
     def __str__(self):
         return self.root.__str__()
@@ -233,3 +264,4 @@ if __name__ == '__main__':
                 for z in y.instructions:
                     print str(z)
         print
+    file(sys.argv[1] + '.out', 'wb').write(a.build0())
