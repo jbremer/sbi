@@ -2,6 +2,8 @@ from construct import *
 from pyasm2 import java
 import copy
 
+__all__ = ['ClassFile', 'JavaMangler']
+
 def _cstringify(s, maxlen):
     s = s[:min(len(s), maxlen)]
     s = s.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
@@ -219,7 +221,7 @@ class ClassFile:
         for x in self.root.AttributeInfo:
             resolve_cp(x, 'attribute_name', 'Utf8')
 
-    def build0(self):
+    def build0(self, fname=None):
         """Rebuild the ClassFile.
 
         This function assumes only the instructions of methods are altered.
@@ -247,10 +249,27 @@ class ClassFile:
                     y.attribute_length = len(y.info)
 
         # build the new ClassFile
-        return _ClassFile.build(root)
+        buf = _ClassFile.build(root)
+        if fname:
+            file(fname, 'wb').write(buf)
+        return buf
 
     def __str__(self):
         return self.root.__str__()
+
+class JavaMangler:
+    def __init__(self, fname):
+        self.root = ClassFile(open(fname, 'rb').read())
+
+        for x in self.root.root.MethodInfo:
+            for y in x.AttributeInfo:
+                y.instructions = self.mangle(x.name.value, x.descriptor.value,
+                    y.instructions, x) or y.instructions
+
+        self.root.build0(fname)
+
+    def mangle(self, name, descriptor, instructions, method_info):
+        pass
 
 if __name__ == '__main__':
     import sys, jsbeautifier
@@ -261,7 +280,8 @@ if __name__ == '__main__':
             x.descriptor.value)
         for y in x.AttributeInfo:
             if y.attribute_name.value == 'Code':
+                offset = 0
                 for z in y.instructions:
-                    print str(z)
+                    print offset, str(z)
+                    offset += z.length
         print
-    file(sys.argv[1] + '.out', 'wb').write(a.build0())
