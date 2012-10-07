@@ -2,7 +2,67 @@ from construct import *
 from pyasm2 import java
 import copy
 
-__all__ = ['ClassFile', 'JavaMangler']
+__all__ = ['ClassFile', 'JavaMangler', 'Descriptor']
+
+class _JavaType:
+    def __init__(self, depth):
+        self.depth = depth
+
+class _SignedByte(_JavaType): typ = 'B'
+class _UnicodeChar(_JavaType): typ = 'C'
+class _Double(_JavaType): typ = 'D'
+class _Float(_JavaType): typ = 'F'
+class _Int(_JavaType): typ = 'I'
+class _Long(_JavaType): typ = 'J'
+class _SignedShort(_JavaType): typ = 'S'
+class _Void(_JavaType): typ = 'V'
+class _Boolean(_JavaType): typ = 'Z'
+
+class _ClassName(_JavaType):
+    typ = 'L'
+    def __init__(self, clazz, depth):
+        self.clazz = clazz
+        self.depth = depth
+
+class Descriptor:
+    def __init__(self, s):
+        assert s[0] == '('
+        params, ret = s[1:].split(')')
+
+        table = {
+            'B': _SignedByte, 'C': _UnicodeChar, 'D': _Double, 'F': _Float,
+            'I': _Int, 'J': _Long, 'S': _SignedShort, 'V': _Void,
+            'Z': _Boolean,
+        }
+
+        self.params = []
+        for y in params.split(';'):
+            depth = 0
+            for x in xrange(len(y)):
+                if y[x] == '[':
+                    depth += 1
+                elif y[x] == 'L':
+                    self.params.append(_ClassName(y[x+1:], depth))
+                    break
+                else:
+                    self.params.append(table[y[x]](depth))
+                    depth = 0
+
+        depth = 0
+        while ret[depth] == '[':
+            depth += 1
+
+        if ret[depth] == 'L':
+            self.ret = _ClassName(ret[depth+1:][:-1], depth)
+        else:
+            self.ret = table[ret[depth]](depth)
+
+    def __repr__(self):
+        table = {'B': 'byte', 'C': 'char', 'D': 'double', 'F': 'float',
+            'I': 'int', 'J': 'long', 'S': 'short', 'V': 'void', 'Z': 'bool'}
+        f = lambda x: x.clazz if x.typ == 'L' else table[x.typ]
+        g = lambda x: f(x) + '[]' * x.depth
+        return '%s (%s)' % (g(self.ret), ', '.join(map(g, self.params)))
 
 def _cstringify(s, maxlen):
     s = s[:min(len(s), maxlen)]
@@ -258,13 +318,14 @@ class ClassFile:
         return self.root.__str__()
 
 class JavaMangler:
-    def __init__(self, fname):
+    def __init__(self, fname, *args):
         self.root = ClassFile(open(fname, 'rb').read())
 
         for x in self.root.root.MethodInfo:
             for y in x.AttributeInfo:
-                y.instructions = self.mangle(x.name.value, x.descriptor.value,
-                    y.instructions, x) or y.instructions
+                y.instructions = self.mangle(x.name.value,
+                    Descriptor(x.descriptor.value), y.instructions, x,
+                    *args) or y.instructions
 
         self.root.build0(fname)
 
