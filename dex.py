@@ -8,6 +8,8 @@ def _uleb128(data):
         value += (ch & 0x7f) << (7 * x)
         if (ch & 128) == 0:
             break
+    if x == 4 and ch & 128:
+        raise Exception('Invalid uleb128 encoding')
     return x + 1, value
 
 def _uleb128p1(data):
