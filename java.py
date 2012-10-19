@@ -8,6 +8,9 @@ class _JavaType:
     def __init__(self, depth):
         self.depth = depth
 
+    def __str__(self):
+        return '[' * self.depth + self.typ
+
 class _SignedByte(_JavaType): typ = 'B'
 class _UnicodeChar(_JavaType): typ = 'C'
 class _Double(_JavaType): typ = 'D'
@@ -23,6 +26,9 @@ class _ClassName(_JavaType):
     def __init__(self, clazz, depth):
         self.clazz = clazz
         self.depth = depth
+
+    def __str__(self):
+        return '[' * self.depth + 'L' + self.clazz + ';'
 
 class Descriptor:
     def __init__(self, s):
@@ -63,6 +69,9 @@ class Descriptor:
         f = lambda x: x.clazz if x.typ == 'L' else table[x.typ]
         g = lambda x: f(x) + '[]' * x.depth
         return '%s (%s)' % (g(self.ret), ', '.join(map(g, self.params)))
+
+    def __str__(self):
+        return '(%s)%s' % (''.join(map(str, self.params)), self.ret)
 
 def _cstringify(s, maxlen):
     s = s[:min(len(s), maxlen)]
@@ -331,6 +340,13 @@ class JavaMangler:
 
     def mangle(self, name, descriptor, instructions, method_info):
         pass
+
+    def update_descriptor(self, descriptor, value):
+        for x in self.root.root.ConstantPoolInfo:
+            if x.tag[9:] == 'Utf8' and x.value == descriptor.__str__():
+                x.value = value.__str__()
+                return
+        raise Exception('unknown descriptor: ' + descriptor)
 
 if __name__ == '__main__':
     import sys, jsbeautifier
