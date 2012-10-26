@@ -235,9 +235,14 @@ encoded_type_addr_pair = Struct('encoded_type_addr_pair',
     ULEB128('type_idx'),
     ULEB128('addr'))
 
+encoded_catch_handler = Struct('encoded_catch_handler',
+    SLEB128('size'),
+    MetaArray(lambda ctx: abs(ctx.size), encoded_type_addr_pair),
+    If(lambda ctx: ctx.size, ULEB128('catch_all_addr')))
+
 encoded_catch_handler_list = Struct('encoded_catch_handler_list',
     SLEB128('size'),
-    MetaArray(lambda ctx: abs(ctx.size), encoded_catch_handler_list),
+    MetaArray(lambda ctx: abs(ctx.size), encoded_catch_handler),
     If(lambda ctx: ctx.size, ULEB128('catch_all_addr')))
 
 code_item = Struct('code_item',
@@ -278,7 +283,7 @@ annotation_set_ref_item = Struct('annotation_set_ref_item',
 
 annotation_set_ref_list = Struct('annotation_set_ref_list',
     ULInt32('size'),
-    MetaArray(lambda ctx: ctx.size, annotation_set_ref_list))
+    MetaArray(lambda ctx: ctx.size, annotation_set_ref_item))
 
 annotation_off_item = Struct('annotation_off_item',
     ULInt32('annotation_off'))
@@ -295,7 +300,7 @@ annotation_item = Struct('annotation_item',
     encoded_annotation)
 
 encoded_array_item = Struct('encoded_array_item',
-    encoded_array
+    encoded_array)
 
 map_item = Struct('map_item',
     Enum(ULInt16('type'),
