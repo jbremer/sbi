@@ -356,6 +356,8 @@ ACC_ENUM = 0x4000
 ACC_CONSTRUCTOR = 0x10000
 ACC_DECLARED_SYNCHRONIZED = 0x20000
 
+NO_INDEX = 0xffffffff
+
 def id_section(off, size, item):
     return Pointer(lambda ctx: getattr(ctx.header, off),
         MetaArray(lambda ctx: getattr(ctx.header, size), item))
@@ -376,6 +378,48 @@ _DexFile = Struct('DexFile',
 class DexFile:
     def __init__(self, data):
         self.root = _DexFile.parse(data)
+
+        def _str_(idx):
+            return self.root.string_id_item[idx]
+
+        def _proto_(idx):
+            return self.root.proto_id_item[idx]
+
+        def _desc_(idx):
+            if idx == NO_INDEX:
+                return 'Ljava/lang/Object;'
+            return self.root.type_id_item[idx]
+
+        # simplify string_id_item
+        for idx, x in enumerate(self.root.string_id_item):
+            self.root.string_id_item[idx] = x.string_data_item.data
+
+        # resolve & simplify type_id_item
+        for idx, x in enumerate(self.root.type_id_item):
+            self.root.type_id_item[idx] = _str_(x.descriptor_idx)
+
+        # resolve proto_id_item
+        for x in self.root.proto_id_item:
+            x.shorty = _str_(x.shorty_idx)
+            x.return_type = _desc_(x.return_type_idx)
+
+        # resolve field_id_items
+        for x in self.root.field_id_item:
+            x.class_ = _desc_(x.class_idx)
+            x.type_ = _desc_(x.type_idx)
+            x.name = _str_(x.name_idx)
+
+        # resolve method_id_items
+        for x in self.root.method_id_item:
+            x.class_ = _desc_(x.class_idx)
+            x.proto = _proto_(x.proto_idx)
+            x.name = _str_(x.name_idx)
+
+        # resolve class_def_item
+        for x in self.root.class_def_item:
+            x.class_ = _desc_(x.class_idx)
+            x.superclass = _desc_(x.superclass_idx)
+            x.source_file = _str_(x.source_file_idx)
 
     def __str__(self):
         return self.root.__str__()
