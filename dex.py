@@ -277,8 +277,9 @@ code_item = Struct('code_item',
     ULInt32('debug_info_off'),
     ULInt32('insn_size'),
     MetaArray(lambda ctx: ctx.insn_size, ULInt16('insns')),
-    Aligned(MetaArray(lambda ctx: ctx.tries_size, try_item)),
-    If(lambda ctx: ctx.tries_size, encoded_catch_handler_list))
+    Rename('tries', Aligned(MetaArray(lambda ctx: ctx.tries_size, try_item))),
+    Rename('handlers', If(lambda ctx: ctx.tries_size,
+        encoded_catch_handler_list)))
 
 field_annotation = Struct('field_annotation',
     ULInt32('field_idx'),
