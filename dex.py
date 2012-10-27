@@ -198,11 +198,6 @@ string_id_item = Struct('string_id_item',
 type_id_item = Struct('type_id_item',
     ULInt32('descriptor_idx'))
 
-proto_id_item = Struct('proto_id_item',
-    ULInt32('shorty_idx'),
-    ULInt32('return_type_idx'),
-    ULInt32('parameters_off'))
-
 field_id_item = Struct('field_id_item',
     ULInt16('class_idx'),
     ULInt16('type_idx'),
@@ -244,6 +239,13 @@ type_item = Struct('type_item',
 type_list = Struct('type_list',
     ULInt32('size'),
     MetaArray(lambda ctx: ctx.size, type_item))
+
+proto_id_item = Struct('proto_id_item',
+    ULInt32('shorty_idx'),
+    ULInt32('return_type_idx'),
+    ULInt32('parameters_off'),
+    Rename('parameters', If(lambda ctx: ctx.parameters_off,
+        Pointer(lambda ctx: ctx.parameters_off, type_list))))
 
 try_item = Struct('try_item',
     ULInt32('start_addr'),
@@ -429,6 +431,11 @@ class DexFile:
             x.class_ = _desc_(x.class_idx)
             x.proto = _proto_(x.proto_idx)
             x.name = _str_(x.name_idx)
+
+            # resolve & simplify method_id_item.proto.parameters
+            if isinstance(x.proto.parameters, Container):
+                x.proto.parameters = [_desc_(y.type_idx)
+                    for y in x.proto.parameters.type_item]
 
         # resolve class_def_item
         for x in self.root.class_def_item:
