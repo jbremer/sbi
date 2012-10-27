@@ -165,12 +165,13 @@ encoded_annotation = Struct('encoded_annotation',
     ULEB128('size'),
     MetaArray(lambda ctx: ctx.size, Rename('elements', annotation_element)))
 
-string_id_item = Struct('string_id_item',
-    ULInt32('string_data_off'))
-
 string_data_item = Struct('string_data_item',
-    ULInt32('utf16_size'),
+    ULEB128('utf16_size'),
     mutf8_string('data'))
+
+string_id_item = Struct('string_id_item',
+    ULInt32('string_data_off'),
+    Pointer(lambda ctx: ctx.string_data_off, string_data_item))
 
 type_id_item = Struct('type_id_item',
     ULInt32('descriptor_idx'))
@@ -349,3 +350,52 @@ ACC_ANNOTATION = 0x2000
 ACC_ENUM = 0x4000
 ACC_CONSTRUCTOR = 0x10000
 ACC_DECLARED_SYNCHRONIZED = 0x20000
+
+def id_section(name, typ='_ids'):
+    off = '%s%s_off' % (name, typ)
+    size = '%s%s_size' % (name, typ)
+    item = globals()['%s%s_item' % (name, typ[:-1])]
+    data = '%s%s_data' % (name, typ)
+
+    return Embed(Struct(None,
+        Pointer(lambda ctx: getattr(ctx.header, off),
+            MetaField(data, lambda ctx: getattr(ctx.header, size))),
+        Value(name + typ,
+            lambda ctx: OptionalGreedyRange(item).parse(getattr(ctx, data)))))
+
+_DexFile = Struct('DexFile',
+    Rename('header', header_item),
+
+    # strings have an offset into the data section, so they need some extra
+    # attention
+    Pointer(lambda ctx: ctx.header.string_ids_off,
+        MetaField('string_ids_data', lambda ctx: ctx.header.string_ids_size)),
+    MetaArray(lambda ctx: len(ctx.string_ids_data) / string_id_item.sizeof(),
+        string_id_item),
+
+    # type_id_items, proto_id_items, field_id_items, method_id_items,
+    # class_def_items, and finally, the data section itself
+    id_section('type'),
+    id_section('proto'),
+    id_section('field'),
+    id_section('method'),
+    id_section('class', '_defs'),
+    OnDemand(Pointer(lambda ctx: ctx.header.data_off,
+        MetaField('data', lambda ctx: ctx.header.data_size))))
+
+class DexFile:
+    def __init__(self, data):
+        self.root = _DexFile.parse(data)
+
+    def __str__(self):
+        return self.root.__str__()
+
+if __name__ == '__main__':
+    import sys, jsbeautifier
+    if len(sys.argv) < 2:
+        print 'Usage: %s <dex-file>' % sys.argv[0]
+        exit(0)
+
+    b = DexFile(open(sys.argv[1], 'rb').read())
+    a = b.root
+    print jsbeautifier.beautify(a.__str__())
