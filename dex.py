@@ -112,7 +112,7 @@ _unsigned_int_types = {1: ULInt8, 2: ULInt16, 4: ULInt32, 8: ULInt64}
 _float_types = {4: LFloat32, 8: LFloat64}
 
 def _sign_extend(value, length):
-    return value.rjust(length, '\xff' if ord(value[0]) & 0x80 else '\x00')
+    return value.ljust(length, '\xff' if ord(value[0]) & 0x80 else '\x00')
 
 def _signed_int(name, length):
     return Embed(Struct(None,
@@ -124,13 +124,13 @@ def _unsigned_int(name, length):
     return Embed(Struct(None,
         MetaField('%s_bytes' % name, lambda ctx: ctx.value_arg+1),
         Value(name, lambda ctx: _unsigned_int_types[length](None).parse(
-            getattr(ctx, '%s_bytes' % name).rjust(length, '\x00')))))
+            getattr(ctx, '%s_bytes' % name).ljust(length, '\x00')))))
 
 def _float(name, size):
     return Embed(Struct(None,
         MetaField('%s_bytes' % name, lambda ctx: ctx.value_arg+1),
         Value(name, lambda ctx: _float_types[length](None).parse(
-            getattr(ctx, '%s_bytes' % name).ljust(length, '\x00')))))
+            getattr(ctx, '%s_bytes' % name).rjust(length, '\x00')))))
 
 encoded_value = Struct('encoded_value',
     Embed(BitStruct(None,
