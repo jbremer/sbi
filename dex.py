@@ -191,16 +191,6 @@ method_id_item = Struct('method_id_item',
     ULInt16('proto_idx'),
     ULInt32('name_idx'))
 
-class_def_item = Struct('class_def_item',
-    ULInt32('class_idx'),
-    ULInt32('access_flags'),
-    ULInt32('superclass_idx'),
-    ULInt32('interfaces_off'),
-    ULInt32('source_file_idx'),
-    ULInt32('annotations_off'),
-    ULInt32('class_data_off'),
-    ULInt32('static_values_off'))
-
 encoded_field = Struct('encoded_field',
     ULEB128('field_idx_diff'),
     ULEB128('access_flags'))
@@ -215,10 +205,25 @@ class_data_item = Struct('class_data_item',
     ULEB128('instance_fields_size'),
     ULEB128('direct_methods_size'),
     ULEB128('virtual_methods_size'),
-    MetaArray(lambda ctx: ctx.static_fields_size, encoded_field),
-    MetaArray(lambda ctx: ctx.instance_fields_size, encoded_field),
-    MetaArray(lambda ctx: ctx.direct_methods_size, encoded_method),
-    MetaArray(lambda ctx: ctx.virtual_methods_size, encoded_method))
+    Rename('static_fields', MetaArray(lambda ctx: ctx.static_fields_size,
+        encoded_field)),
+    Rename('instance_fields', MetaArray(lambda ctx: ctx.instance_fields_size,
+        encoded_field)),
+    Rename('direct_methods', MetaArray(lambda ctx: ctx.direct_methods_size,
+        encoded_method)),
+    Rename('virtual_methods', MetaArray(lambda ctx: ctx.virtual_methods_size,
+        encoded_method)))
+
+class_def_item = Struct('class_def_item',
+    ULInt32('class_idx'),
+    ULInt32('access_flags'),
+    ULInt32('superclass_idx'),
+    ULInt32('interfaces_off'),
+    ULInt32('source_file_idx'),
+    ULInt32('annotations_off'),
+    ULInt32('class_data_off'),
+    Pointer(lambda ctx: ctx.class_data_off, class_data_item),
+    ULInt32('static_values_off'))
 
 type_item = Struct('type_item',
     ULInt16('type_idx'))
@@ -351,35 +356,20 @@ ACC_ENUM = 0x4000
 ACC_CONSTRUCTOR = 0x10000
 ACC_DECLARED_SYNCHRONIZED = 0x20000
 
-def id_section(name, typ='_ids'):
-    off = '%s%s_off' % (name, typ)
-    size = '%s%s_size' % (name, typ)
-    item = globals()['%s%s_item' % (name, typ[:-1])]
-    data = '%s%s_data' % (name, typ)
-
-    return Embed(Struct(None,
-        Pointer(lambda ctx: getattr(ctx.header, off),
-            MetaField(data, lambda ctx: getattr(ctx.header, size))),
-        Value(name + typ,
-            lambda ctx: OptionalGreedyRange(item).parse(getattr(ctx, data)))))
+def id_section(off, size, item):
+    return Pointer(lambda ctx: getattr(ctx.header, off),
+        MetaArray(lambda ctx: getattr(ctx.header, size), item))
 
 _DexFile = Struct('DexFile',
     Rename('header', header_item),
 
-    # strings have an offset into the data section, so they need some extra
-    # attention
-    Pointer(lambda ctx: ctx.header.string_ids_off,
-        MetaField('string_ids_data', lambda ctx: ctx.header.string_ids_size)),
-    MetaArray(lambda ctx: len(ctx.string_ids_data) / string_id_item.sizeof(),
-        string_id_item),
+    id_section('string_ids_off', 'string_ids_size', string_id_item),
+    id_section('type_ids_off', 'type_ids_size', type_id_item),
+    id_section('proto_ids_off', 'proto_ids_size', proto_id_item),
+    id_section('field_ids_off', 'field_ids_size', field_id_item),
+    id_section('method_ids_off', 'method_ids_size', method_id_item),
+    id_section('class_defs_off', 'class_defs_size', class_def_item),
 
-    # type_id_items, proto_id_items, field_id_items, method_id_items,
-    # class_def_items, and finally, the data section itself
-    id_section('type'),
-    id_section('proto'),
-    id_section('field'),
-    id_section('method'),
-    id_section('class', '_defs'),
     OnDemand(Pointer(lambda ctx: ctx.header.data_off,
         MetaField('data', lambda ctx: ctx.header.data_size))))
 
