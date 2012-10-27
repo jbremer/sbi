@@ -217,7 +217,10 @@ encoded_method = Struct('encoded_method',
     ULEB128('method_idx_diff'),
     ULEB128('access_flags_'),
     access_flags(),
-    ULEB128('code_off'))
+    ULEB128('code_off'),
+    If(lambda ctx: ctx.code_off,
+        Pointer(lambda ctx: ctx.code_off,
+            LazyBound('code_item', lambda: code_item))))
 
 class_data_item = Struct('class_data_item',
     ULEB128('static_fields_size'),
