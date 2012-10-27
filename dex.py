@@ -56,6 +56,28 @@ def ULEB128(name): return _LEB128(name, _ULEB128)
 def SLEB128(name): return _LEB128(name, _SLEB128)
 def ULEB128p1(name): return _LEB128(name, _ULEB128p1)
 
+def access_flags():
+    return FlagsEnum(Value('access_flags', lambda ctx: ctx.access_flags_),
+        ACC_PUBLIC = 0x1,
+        ACC_PRIVATE = 0x2,
+        ACC_PROTECTED = 0x4,
+        ACC_STATIC = 0x8,
+        ACC_FINAL = 0x10,
+        ACC_SYNCHRONIZED = 0x20,
+        ACC_VOLATILE = 0x40,
+        ACC_BRIDGE = 0x40,
+        ACC_TRANSIENT = 0x80,
+        ACC_VARARGS = 0x80,
+        ACC_NATIVE = 0x100,
+        ACC_INTERFACE = 0x200,
+        ACC_ABSTRACT = 0x400,
+        ACC_STRICT = 0x800,
+        ACC_SYNTHETIC = 0x1000,
+        ACC_ANNOTATION = 0x2000,
+        ACC_ENUM = 0x4000,
+        ACC_CONSTRUCTOR = 0x10000,
+        ACC_DECLARED_SYNCHRONIZED = 0x20000)
+
 def _type_identifier_list(name, typ='_ids'):
     return Embed(Struct(None,
         ULInt32('%s%s_size' % (name, typ)),
@@ -193,11 +215,13 @@ method_id_item = Struct('method_id_item',
 
 encoded_field = Struct('encoded_field',
     ULEB128('field_idx_diff'),
-    ULEB128('access_flags'))
+    ULEB128('access_flags_'),
+    access_flags())
 
 encoded_method = Struct('encoded_method',
     ULEB128('method_idx_diff'),
-    ULEB128('access_flags'),
+    ULEB128('access_flags_'),
+    access_flags(),
     ULEB128('code_off'))
 
 class_data_item = Struct('class_data_item',
@@ -213,17 +237,6 @@ class_data_item = Struct('class_data_item',
         encoded_method)),
     Rename('virtual_methods', MetaArray(lambda ctx: ctx.virtual_methods_size,
         encoded_method)))
-
-class_def_item = Struct('class_def_item',
-    ULInt32('class_idx'),
-    ULInt32('access_flags'),
-    ULInt32('superclass_idx'),
-    ULInt32('interfaces_off'),
-    ULInt32('source_file_idx'),
-    ULInt32('annotations_off'),
-    ULInt32('class_data_off'),
-    Pointer(lambda ctx: ctx.class_data_off, class_data_item),
-    ULInt32('static_values_off'))
 
 type_item = Struct('type_item',
     ULInt16('type_idx'))
@@ -274,8 +287,25 @@ parameter_annotation = Struct('parameter_annotation',
     ULInt32('method_idx'),
     ULInt32('annotations_off'))
 
+annotation_item = Struct('annotation_item',
+    Enum(Byte('visibility'),
+        VISIBILITY_BUILD = 0,
+        VISIBILITY_RUNTIME = 1,
+        VISIBILITY_SYSTEM = 2),
+    encoded_annotation)
+
+annotation_off_item = Struct('annotation_off_item',
+    ULInt32('annotation_off'),
+    Pointer(lambda ctx: ctx.annotation_off, annotation_item))
+
+annotation_set_item = Struct('annotation_set_item',
+    ULInt32('size'),
+    MetaArray(lambda ctx: ctx.size, annotation_off_item))
+
 annotations_directory_item = Struct('annotations_directory_item',
     ULInt32('class_annotations_off'),
+    If(lambda ctx: ctx.class_annotations_off,
+        Pointer(lambda ctx: ctx.class_annotations_off, annotation_set_item)),
     ULInt32('fields_size'),
     ULInt32('annotated_methods_size'),
     ULInt32('annotated_parameters_size'),
@@ -290,20 +320,6 @@ annotation_set_ref_item = Struct('annotation_set_ref_item',
 annotation_set_ref_list = Struct('annotation_set_ref_list',
     ULInt32('size'),
     MetaArray(lambda ctx: ctx.size, annotation_set_ref_item))
-
-annotation_off_item = Struct('annotation_off_item',
-    ULInt32('annotation_off'))
-
-annotation_set_item = Struct('annotation_set_item',
-    ULInt32('size'),
-    MetaArray(lambda ctx: ctx.size, annotation_off_item))
-
-annotation_item = Struct('annotation_item',
-    Enum(Byte('visibility'),
-        VISIBILITY_BUILD = 0,
-        VISIBILITY_RUNTIME = 1,
-        VISIBILITY_SYSTEM = 2),
-    encoded_annotation)
 
 encoded_array_item = Struct('encoded_array_item',
     encoded_array)
@@ -336,25 +352,24 @@ map_list = Struct('map_list',
     ULInt32('size'),
     MetaArray(lambda ctx: ctx.size, map_item))
 
-ACC_PUBLIC = 0x1
-ACC_PRIVATE = 0x2
-ACC_PROTECTED = 0x4
-ACC_STATIC = 0x8
-ACC_FINAL = 0x10
-ACC_SYNCHRONIZED = 0x20
-ACC_VOLATILE = 0x40
-ACC_BRIDGE = 0x40
-ACC_TRANSIENT = 0x80
-ACC_VARARGS = 0x80
-ACC_NATIVE = 0x100
-ACC_INTERFACE = 0x200
-ACC_ABSTRACT = 0x400
-ACC_STRICT = 0x800
-ACC_SYNTHETIC = 0x1000
-ACC_ANNOTATION = 0x2000
-ACC_ENUM = 0x4000
-ACC_CONSTRUCTOR = 0x10000
-ACC_DECLARED_SYNCHRONIZED = 0x20000
+class_def_item = Struct('class_def_item',
+    ULInt32('class_idx'),
+    ULInt32('access_flags_'),
+    access_flags(),
+    ULInt32('superclass_idx'),
+    ULInt32('interfaces_off'),
+    Rename('interfaces', If(lambda ctx: ctx.interfaces_off,
+        Pointer(lambda ctx: ctx.interfaces_off, type_list))),
+    ULInt32('source_file_idx'),
+    ULInt32('annotations_off'),
+    If(lambda ctx: ctx.annotations_off,
+        Pointer(lambda ctx: ctx.annotations_off, annotations_directory_item)),
+    ULInt32('class_data_off'),
+    If(lambda ctx: ctx.class_data_off,
+        Pointer(lambda ctx: ctx.class_data_off, class_data_item)),
+    ULInt32('static_values_off'),
+    Rename('static_values', If(lambda ctx: ctx.static_values_off,
+        Pointer(lambda ctx: ctx.static_values_off, encoded_array_item))))
 
 NO_INDEX = 0xffffffff
 
